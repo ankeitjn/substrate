@@ -850,10 +850,8 @@ function renderLayerList() {
       const idx = el("span", "layer-row__idx");
       idx.textContent = String(i + 1).padStart(2, "0");
       const label = el("span", "layer-row__label");
-      const thick = el("span", "layer-row__thick");
-      thick.textContent = layer.thickness + "px";
 
-      row.append(idx, label, thick);
+      row.append(idx, label);
       row.addEventListener("pointerenter", () => exploded && exploded.setHovered(layer.id));
       row.addEventListener("pointerleave", () => exploded && exploded.setHovered(null));
       row.addEventListener("focus", () => exploded && exploded.setHovered(layer.id));
@@ -1227,6 +1225,13 @@ function embossColor(hex) {
  * Draw one switch from ~6 divs. In the exploded view the nameplate is
  * dropped (too small to read at board scale) and the gold pins appear.
  */
+/** Four extruded side walls for one solid face. */
+function switchWalls() {
+  const walls = el("div", "sw__walls");
+  ["n", "s", "e", "w"].forEach(side => walls.append(el("i", "sw__wall sw__wall--" + side)));
+  return walls;
+}
+
 function buildSwitch(sw, opts) {
   const exploded = !!(opts && opts.exploded);
   const root = el("div", "sw" + (exploded ? " sw--exploded" : ""));
@@ -1236,24 +1241,31 @@ function buildSwitch(sw, opts) {
   root.style.setProperty("--sw-stem", sw.colors.stem);
   root.style.setProperty("--sw-emboss", embossColor(sw.colors.top));
 
+  // gold hotswap pins, below the base (exploded view only)
   const pins = el("div", "sw__pins");
   pins.append(el("i"), el("i"));
 
-  const bottom = el("div", "sw__bottom");
-  const top = el("div", "sw__top");
-  const well = el("div", "sw__well");
-  const stem = el("div", "sw__stem");
+  // bottom housing, extruded, plus its four corner latches
+  const base = el("div", "sw__base");
+  base.append(switchWalls());
+  const clips = el("div", "sw__clips");
+  clips.append(el("i"), el("i"), el("i"), el("i"));
 
-  well.append(stem);
-  top.append(well);
+  // top housing, extruded, sitting on the base
+  const top = el("div", "sw__top");
+  top.append(switchWalls(), el("div", "sw__led"));
 
   if (!exploded) {
-    const plate = el("div", "sw__nameplate");
-    plate.textContent = sw.brand;
-    top.append(plate);
+    const nameplate = el("div", "sw__nameplate");
+    nameplate.textContent = sw.brand;
+    top.append(nameplate);
   }
 
-  root.append(pins, bottom, top);
+  // stem: the whole post is the stem colour, with a cross-shaped recess
+  const stem = el("div", "sw__stem");
+  stem.append(switchWalls(), el("div", "sw__cross"));
+
+  root.append(pins, base, clips, top, stem);
   return root;
 }
 
@@ -1401,6 +1413,7 @@ const SVGNS = "http://www.w3.org/2000/svg";
 const LABEL_GUTTER = 168;   // px reserved on the right of the stage
 const LABEL_MIN_GAP = 24;   // px minimum vertical spacing between labels
 const ANNOTATE_FROM = 40;   // §11: annotations appear above explode 40
+const EXPLODED_SW_SIZE = 44;  // px, matches .sw--exploded --sw-size
 
 function svgEl(tag, cls) {
   const node = document.createElementNS(SVGNS, tag);
@@ -1559,8 +1572,8 @@ class ExplodedView {
         node.style.position = "absolute";
         node.style.left = c.x + "px";
         node.style.top = c.y + "px";
-        node.style.marginLeft = "-20px";
-        node.style.marginTop = "-20px";
+        node.style.marginLeft = -(EXPLODED_SW_SIZE / 2) + "px";
+        node.style.marginTop = -(EXPLODED_SW_SIZE / 2) + "px";
         return node;
       });
       holder.append(...this.switchEls);
@@ -1690,7 +1703,7 @@ class ExplodedView {
     this.capBoard.render(state);
 
     this.setExplode(state.explode, { animate: false });
-    this.spin.classList.toggle("is-rotating", !!state.autoRotate && !prefersReducedMotion());
+    this.asm.classList.toggle("is-rotating", !!state.autoRotate && !prefersReducedMotion());
     this.fit();
   }
 

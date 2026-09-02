@@ -55,6 +55,7 @@
 @property --spread  { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --base    { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --extra   { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --spin    { syntax: "<angle>";  inherits: false; initial-value: 0deg; }
 
 /* =====================================================================
    RESET
@@ -657,109 +658,186 @@ img, svg { display: block; max-width: 100%; }
 }
 
 /* =====================================================================
-   SWITCH RENDERING (§6) — ~6 divs, no images
+   SWITCH RENDERING (§6) — DOM + CSS only, no images
 
-   Colours arrive as --sw-top / --sw-bottom / --sw-stem custom properties.
-   Every internal dimension is expressed against --sw-size via --k, so the
-   same component draws at 92px in a gallery card and at 40px on the board
-   in the exploded view without a second set of rules.
+   A real extrusion, not stacked planes. Each horizontal face carries four
+   walls rotated 90° out of its own plane, so the bottom housing, top
+   housing and stem post all have visible sides at any viewing angle.
+
+   z=0 is the PCB side. Heights stack:
+       base housing   0            -> --d-base
+       top housing    --d-base     -> + --d-top
+       stem post      (top face)   -> + --d-stem
+
+   The stem is the coloured part, with a cross-shaped recess cut into it —
+   that is the way round a real MX switch reads from above.
+
+   Every dimension is expressed against --sw-size via --k, so one component
+   draws at 92 in a gallery card and at 44 on the board.
    ===================================================================== */
 .sw-stage {
-  height: 140px;
+  height: 150px;
   display: grid;
   place-items: center;
-  perspective: 700px;
+  perspective: 620px;
   margin-bottom: 22px;
 }
 .sw {
-  --sw-size: 92px;
+  /* --sw-size is UNITLESS on purpose: dividing a length by a number gives a
+     length, and length * length is invalid in calc(), which silently
+     collapses every child to zero. Keep it a plain number and multiply. */
+  --sw-size: 92;
   --k: calc(var(--sw-size) / 92);
+  --d-base: calc(18px * var(--k));
+  --d-top:  calc(20px * var(--k));
+  --d-stem: calc(13px * var(--k));
   position: relative;
-  width: var(--sw-size);
-  height: var(--sw-size);
+  width: calc(var(--sw-size) * 1px);
+  height: calc(var(--sw-size) * 1px);
   transform-style: preserve-3d;
   transform: rotateX(48deg) rotateZ(-38deg);   /* isometric, per §6 */
 }
 
-/* bottom housing */
-.sw__bottom {
+/* ---- extruded side walls, shared by every solid ---- */
+.sw__walls {
   position: absolute;
   inset: 0;
-  border-radius: calc(10px * var(--k));
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+.sw__wall {
+  position: absolute;
+  background-color: var(--face);
+  background-image: linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.46));
+}
+.sw__wall--s { left: 0; right: 0; top: 100%;    height: var(--depth); transform-origin: 50% 0%;   transform: rotateX(-90deg); }
+.sw__wall--n { left: 0; right: 0; bottom: 100%; height: var(--depth); transform-origin: 50% 100%; transform: rotateX(90deg); }
+.sw__wall--e { top: 0; bottom: 0; left: 100%;   width: var(--depth);  transform-origin: 0% 50%;   transform: rotateY(90deg); }
+.sw__wall--w { top: 0; bottom: 0; right: 100%;  width: var(--depth);  transform-origin: 100% 50%; transform: rotateY(-90deg); }
+/* the two walls facing away catch less light */
+.sw__wall--n, .sw__wall--w { background-image: linear-gradient(180deg, rgba(0,0,0,.34), rgba(0,0,0,.58)); }
+
+/* ---- bottom housing ---- */
+.sw__base {
+  position: absolute;
+  inset: 0;
+  --face: var(--sw-bottom);
+  --depth: var(--d-base);
   background: var(--sw-bottom);
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.12),
-    0 calc(10px * var(--k)) calc(20px * var(--k)) rgba(0,0,0,.48);
+  border-radius: calc(4px * var(--k));
+  transform: translateZ(var(--d-base));
+  transform-style: preserve-3d;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14);
 }
 /* translucent tops let the stem colour bleed through faintly beneath */
-.sw--translucent .sw__bottom::after {
+.sw--translucent .sw__base::after {
   content: "";
-  position: absolute;
-  inset: calc(12px * var(--k));
-  border-radius: calc(8px * var(--k));
-  background: radial-gradient(circle at 50% 45%, var(--sw-stem), transparent 68%);
-  opacity: .38;
-}
-
-/* top housing */
-.sw__top {
   position: absolute;
   inset: calc(10px * var(--k));
-  border-radius: calc(8px * var(--k));
-  background: var(--sw-top);
-  transform: translateZ(calc(15px * var(--k)));
-  display: grid;
-  place-items: center;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.14),
-    0 calc(6px * var(--k)) calc(12px * var(--k)) rgba(0,0,0,.40);
-}
-.sw--translucent .sw__top {
-  opacity: .82;
-  background-image: linear-gradient(160deg, rgba(255,255,255,.28), transparent 45%);
+  border-radius: calc(4px * var(--k));
+  background: radial-gradient(circle at 50% 45%, var(--sw-stem), transparent 66%);
+  opacity: .4;
 }
 
-/* stem well — a recessed dark radial */
-.sw__well {
-  position: relative;
-  width: calc(36px * var(--k));
-  height: calc(36px * var(--k));
-  border-radius: calc(6px * var(--k));
-  background: radial-gradient(circle at 50% 45%, rgba(0,0,0,.78), rgba(0,0,0,.30) 72%);
-  display: grid;
-  place-items: center;
+/* ---- the four corner latches, on the base ---- */
+.sw__clips { position: absolute; inset: 0; transform-style: preserve-3d; }
+.sw__clips i {
+  position: absolute;
+  width: calc(20px * var(--k));
+  height: calc(7px * var(--k));
+  border-radius: calc(2px * var(--k));
+  background: var(--sw-bottom);
+  transform: translateZ(calc(var(--d-base) - 3px * var(--k)));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.20),
+    0 1px 2px rgba(0,0,0,.45);
 }
-/* MX cross */
-.sw__stem {
-  position: relative;
-  width: calc(24px * var(--k));
-  height: calc(24px * var(--k));
-  transform: translateZ(calc(7px * var(--k)));
+.sw__clips i:nth-child(1) { left: calc(-5px * var(--k)); top: calc(10px * var(--k)); }
+.sw__clips i:nth-child(2) { right: calc(-5px * var(--k)); top: calc(10px * var(--k)); }
+.sw__clips i:nth-child(3) { left: calc(-5px * var(--k)); bottom: calc(10px * var(--k)); }
+.sw__clips i:nth-child(4) { right: calc(-5px * var(--k)); bottom: calc(10px * var(--k)); }
+
+/* ---- top housing: chamfered, sitting on the base ---- */
+.sw__top {
+  position: absolute;
+  inset: calc(8px * var(--k));
+  --face: var(--sw-top);
+  --depth: var(--d-top);
+  background: var(--sw-top);
+  transform: translateZ(calc(var(--d-base) + var(--d-top)));
+  transform-style: preserve-3d;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
 }
-.sw__stem::before,
-.sw__stem::after {
+.sw--translucent .sw__top {
+  opacity: .86;
+  background-image: linear-gradient(160deg, rgba(255,255,255,.30), transparent 45%);
+}
+/* a moulded ring just inside the edge */
+.sw__top::after {
   content: "";
   position: absolute;
+  inset: calc(4px * var(--k));
+  border: 1px solid rgba(0,0,0,.20);
+  border-radius: calc(3px * var(--k));
+  pointer-events: none;
+}
+
+/* ---- stem: the whole post is the stem colour ---- */
+.sw__stem {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(36px * var(--k));
+  height: calc(36px * var(--k));
+  margin-left: calc(-18px * var(--k));
+  margin-top: calc(-18px * var(--k));
+  --face: var(--sw-stem);
+  --depth: var(--d-stem);
   background: var(--sw-stem);
-  border-radius: calc(1.5px * var(--k));
-  box-shadow: 0 1px 1px rgba(0,0,0,.35);
+  border-radius: calc(3px * var(--k));
+  transform: translateZ(calc(var(--d-base) + var(--d-top) + var(--d-stem)));
+  transform-style: preserve-3d;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22);
 }
-.sw__stem::before {
-  left: 0; right: 0; top: 50%;
-  height: calc(5px * var(--k));
-  margin-top: calc(-2.5px * var(--k));
+/* the cross is a recess cut into the post, not a raised part */
+.sw__cross { position: absolute; inset: 0; }
+.sw__cross::before,
+.sw__cross::after {
+  content: "";
+  position: absolute;
+  background: rgba(0,0,0,.55);
+  border-radius: calc(1px * var(--k));
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.5);
 }
-.sw__stem::after {
-  top: 0; bottom: 0; left: 50%;
-  width: calc(5px * var(--k));
-  margin-left: calc(-2.5px * var(--k));
+.sw__cross::before {
+  left: calc(5px * var(--k)); right: calc(5px * var(--k)); top: 50%;
+  height: calc(8px * var(--k));
+  margin-top: calc(-4px * var(--k));
+}
+.sw__cross::after {
+  top: calc(5px * var(--k)); bottom: calc(5px * var(--k)); left: 50%;
+  width: calc(8px * var(--k));
+  margin-left: calc(-4px * var(--k));
+}
+
+/* ---- centre-pole hole on the top housing ---- */
+.sw__led {
+  position: absolute;
+  left: 50%;
+  bottom: calc(5px * var(--k));
+  width: calc(10px * var(--k));
+  height: calc(10px * var(--k));
+  margin-left: calc(-5px * var(--k));
+  border-radius: 50%;
+  background: rgba(0,0,0,.40);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.5);
 }
 
 /* embossed brand nameplate — cards only, omitted in the exploded view */
 .sw__nameplate {
   position: absolute;
   left: 0; right: 0;
-  bottom: calc(5px * var(--k));
+  top: calc(5px * var(--k));
   text-align: center;
   font-family: var(--font-mono);
   font-size: calc(5px * var(--k));
@@ -769,31 +847,30 @@ img, svg { display: block; max-width: 100%; }
   text-shadow: 0 1px 0 var(--sw-emboss);
 }
 
-/* gold pins — exploded view only */
+/* gold pins — exploded view only, below z=0 */
 .sw__pins {
   position: absolute;
   left: 0; right: 0;
   bottom: calc(6px * var(--k));
   display: none;
   justify-content: center;
-  gap: calc(18px * var(--k));
-  transform: translateZ(calc(-12px * var(--k)));
+  gap: calc(20px * var(--k));
+  transform: translateZ(calc(-8px * var(--k)));
 }
 .sw--exploded .sw__pins { display: flex; }
 .sw--exploded .sw__nameplate { display: none; }
 .sw__pins i {
   display: block;
   width: calc(6px * var(--k));
-  height: calc(14px * var(--k));
+  height: calc(13px * var(--k));
   border-radius: calc(3px * var(--k));
   background: #C9A94E;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
 }
 
-/* On the board the assembly already carries the tilt, so the switch
-   itself is drawn flat and small. */
+/* On the board the assembly already carries the tilt. */
 .sw--exploded {
-  --sw-size: 40px;
+  --sw-size: 44;
   transform: none;
 }
 
@@ -873,13 +950,18 @@ img, svg { display: block; max-width: 100%; }
   inset: 0;
   transform-style: preserve-3d;
 }
-.assembly-spin.is-rotating { animation: assembly-spin 12s linear infinite; }
-@keyframes assembly-spin { from { transform: rotateZ(0deg); } to { transform: rotateZ(360deg); } }
+/* Auto-rotate must turn the board about its OWN axis, like a turntable.
+   Rotating the wrapper instead spins it about the screen Z axis, which
+   pinwheels the tilted board and flips it upside down halfway round — so
+   the spin angle is folded into the assembly transform, after the tilt. */
+.assembly.is-rotating { animation: assembly-spin 12s linear infinite; }
+@keyframes assembly-spin { from { --spin: 0deg; } to { --spin: 360deg; } }
 
 .assembly {
   --explode: 0;
   --tilt-x: 54deg;
   --tilt-z: -36deg;
+  --spin: 0deg;
   --scale: 1;
   position: absolute;
   left: 50%;
@@ -887,7 +969,11 @@ img, svg { display: block; max-width: 100%; }
   width: var(--asm-w);
   height: var(--asm-h);
   transform-style: preserve-3d;
-  transform: translate(-50%, -50%) scale(var(--scale)) rotateX(var(--tilt-x)) rotateZ(var(--tilt-z));
+  transform:
+    translate(-50%, -50%)
+    scale(var(--scale))
+    rotateX(var(--tilt-x))
+    rotateZ(calc(var(--tilt-z) + var(--spin)));
 }
 
 .layer {
@@ -1050,7 +1136,7 @@ img, svg { display: block; max-width: 100%; }
 /* --- layer list rows --- */
 .layer-row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -1071,12 +1157,6 @@ img, svg { display: block; max-width: 100%; }
   letter-spacing: .04em;
   color: var(--text-2);
   transition: color .2s var(--ease);
-}
-.layer-row__thick {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
 }
 .layer-row:hover .layer-row__label,
 .layer-row.is-isolated .layer-row__label { color: var(--text); }
@@ -1099,7 +1179,7 @@ img, svg { display: block; max-width: 100%; }
 
 /* §12 — no auto-rotate, no Play animation when reduced motion is asked for */
 @media (prefers-reduced-motion: reduce) {
-  .assembly-spin.is-rotating { animation: none; }
+  .assembly.is-rotating { animation: none; }
   .assembly.is-animating .layer { transition: none; }
 }
 
