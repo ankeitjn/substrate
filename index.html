@@ -55,7 +55,6 @@
 @property --spread  { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --base    { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --extra   { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@property --spin    { syntax: "<angle>";  inherits: false; initial-value: 0deg; }
 
 /* =====================================================================
    RESET
@@ -698,13 +697,9 @@ img, svg { display: block; max-width: 100%; }
   transform: rotateX(48deg) rotateZ(-38deg);   /* isometric, per §6 */
 }
 
-/* ---- extruded side walls, shared by every solid ---- */
-.sw__walls {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-  pointer-events: none;
-}
+/* ---- extruded side walls, shared by every solid ----
+   Walls are direct children of the face they belong to: a wrapper div per
+   solid added 3 nodes per switch to the 3D scene for no visual benefit. */
 .sw__wall {
   position: absolute;
   background-color: var(--face);
@@ -868,7 +863,9 @@ img, svg { display: block; max-width: 100%; }
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
 }
 
-/* On the board the assembly already carries the tilt. */
+/* On the board the assembly already carries the tilt. The corner latches
+   are ~10x3px at this scale — invisible, but 5 nodes per switch across a
+   104-key board, so they are dropped from the exploded stack. */
 .sw--exploded {
   --sw-size: 44;
   transform: none;
@@ -954,14 +951,30 @@ img, svg { display: block; max-width: 100%; }
    Rotating the wrapper instead spins it about the screen Z axis, which
    pinwheels the tilted board and flips it upside down halfway round — so
    the spin angle is folded into the assembly transform, after the tilt. */
-.assembly.is-rotating { animation: assembly-spin 12s linear infinite; }
-@keyframes assembly-spin { from { --spin: 0deg; } to { --spin: 360deg; } }
+/* Animate `transform` itself, NOT a custom property. A registered custom
+   property animation is a main-thread style animation: it re-resolves the
+   calc() and recomputes style every frame, which on a preserve-3d subtree
+   of ~2000 nodes steps visibly. Interpolating the transform list directly
+   keeps rotateX fixed and only advances rotateZ, so it stays a turntable. */
+.assembly.is-rotating {
+  animation: assembly-spin 12s linear infinite;
+  will-change: transform;
+}
+@keyframes assembly-spin {
+  from {
+    transform: translate(-50%, -50%) scale(var(--scale))
+               rotateX(var(--tilt-x)) rotateZ(var(--tilt-z));
+  }
+  to {
+    transform: translate(-50%, -50%) scale(var(--scale))
+               rotateX(var(--tilt-x)) rotateZ(calc(var(--tilt-z) + 360deg));
+  }
+}
 
 .assembly {
   --explode: 0;
   --tilt-x: 54deg;
   --tilt-z: -36deg;
-  --spin: 0deg;
   --scale: 1;
   position: absolute;
   left: 50%;
@@ -973,7 +986,7 @@ img, svg { display: block; max-width: 100%; }
     translate(-50%, -50%)
     scale(var(--scale))
     rotateX(var(--tilt-x))
-    rotateZ(calc(var(--tilt-z) + var(--spin)));
+    rotateZ(var(--tilt-z));
 }
 
 .layer {

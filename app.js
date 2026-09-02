@@ -1225,11 +1225,11 @@ function embossColor(hex) {
  * Draw one switch from ~6 divs. In the exploded view the nameplate is
  * dropped (too small to read at board scale) and the gold pins appear.
  */
-/** Four extruded side walls for one solid face. */
+/** Four extruded side walls for one solid face, as a flat fragment. */
 function switchWalls() {
-  const walls = el("div", "sw__walls");
-  ["n", "s", "e", "w"].forEach(side => walls.append(el("i", "sw__wall sw__wall--" + side)));
-  return walls;
+  const frag = document.createDocumentFragment();
+  ["n", "s", "e", "w"].forEach(side => frag.append(el("i", "sw__wall sw__wall--" + side)));
+  return frag;
 }
 
 function buildSwitch(sw, opts) {
@@ -1248,8 +1248,14 @@ function buildSwitch(sw, opts) {
   // bottom housing, extruded, plus its four corner latches
   const base = el("div", "sw__base");
   base.append(switchWalls());
-  const clips = el("div", "sw__clips");
-  clips.append(el("i"), el("i"), el("i"), el("i"));
+
+  // Latches are ~10x3px at board scale — invisible, but 5 nodes per switch
+  // across a 104-key board, so they are not built for the exploded stack.
+  let clips = null;
+  if (!exploded) {
+    clips = el("div", "sw__clips");
+    clips.append(el("i"), el("i"), el("i"), el("i"));
+  }
 
   // top housing, extruded, sitting on the base
   const top = el("div", "sw__top");
@@ -1265,7 +1271,8 @@ function buildSwitch(sw, opts) {
   const stem = el("div", "sw__stem");
   stem.append(switchWalls(), el("div", "sw__cross"));
 
-  root.append(pins, base, clips, top, stem);
+  root.append(pins, base, top, stem);
+  if (clips) root.insertBefore(clips, top);
   return root;
 }
 
@@ -1866,7 +1873,11 @@ class ExplodedView {
 
   _annotate() {
     if (!this.state) return;
-    const show = this.state.explode > ANNOTATE_FROM && !this.isolated && this.gutter > 0;
+    // Leaders are anchored to measured layer positions, so while the board
+    // is turning they would point at stale coordinates. Hide them, which
+    // also keeps per-frame layout reads out of the rotation.
+    const show = this.state.explode > ANNOTATE_FROM && !this.isolated
+              && this.gutter > 0 && !this.state.autoRotate;
     const stageRect = this.stage.getBoundingClientRect();
 
     if (!show) {
